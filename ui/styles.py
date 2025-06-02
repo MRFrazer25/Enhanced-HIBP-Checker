@@ -76,7 +76,7 @@ QComboBox::drop-down {
 }
 
 QComboBox::down-arrow {
-    /* Cleared previous attempts to style the arrow box */
+    /* Intentionally left unstyled to preserve native look */
 }
 
 QPushButton {

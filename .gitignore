@@ -26,8 +26,6 @@ wheels/
 MANIFEST
 
 # PyInstaller
-# Usually these files are written by a CI script
-# and should be ignored
 *.manifest
 *.spec
 
@@ -69,18 +67,4 @@ venv.bak/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Secrets - prevent accidental commits of sensitive files
-# Ensure any files listed here are truly intended to be local-only
-# For example:
-# .env
-# secrets.json
-# config.ini
-
-# If you have specific build artifacts or local configuration files, add them below:
-# e.g. my_local_config.ini
-# e.g. output_files/
-
-# Existing entries (retained and commented where appropriate)
-# node_modules/ # If you have any frontend components
-node_modules/
+/node_modules
