@@ -118,8 +118,16 @@ class MainWindow(QMainWindow):
                 result = func(*args)
             except Exception as e:
                 result = e
-            self._task_finished.emit(callback, result)
+            self._emit_safely("_task_finished", callback, result)
         threading.Thread(target=target, daemon=True).start()
+
+    def _emit_safely(self, signal_name, *args):
+        """Emits a signal from a background thread, returning False if the window has been closed."""
+        try:
+            getattr(self, signal_name).emit(*args)
+            return True
+        except RuntimeError:
+            return False  # The window was destroyed while the thread was still running
 
     def _on_task_finished(self, callback, result):
         callback(result)
@@ -457,14 +465,16 @@ class MainWindow(QMainWindow):
         self.ai_send_button.setText("Stop")
 
         def worker():
+            emit = lambda kind, text="": self._emit_safely("_chat_event", request_id, kind, text)
             try:
                 for chunk in stream_chat(base_url, model, messages, should_stop=stop_event.is_set):
-                    self._chat_event.emit(request_id, "chunk", chunk)
-                self._chat_event.emit(request_id, "done", "")
+                    if not emit("chunk", chunk):
+                        return
+                emit("done")
             except OllamaError as e:
-                self._chat_event.emit(request_id, "error", str(e))
+                emit("error", str(e))
             except Exception as e:
-                self._chat_event.emit(request_id, "error", f"Unexpected error: {e}")
+                emit("error", f"Unexpected error: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
 
