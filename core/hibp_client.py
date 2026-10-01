@@ -1,14 +1,23 @@
 """
-File for interacting with the Have I Been Pwned (HIBP) API.
+File for interacting with the Have I Been Pwned (HIBP) APIs.
 
-This file provides functionality to check for account breaches using the HIBP service.
-It requires an API key for access and a user agent as per HIBP's requirements.
+Provides:
+- Breached account lookups (requires an HIBP API key).
+- Pwned Passwords lookups using the k-anonymity range API (free, no key). Only the
+  first 5 characters of the password's SHA-1 hash ever leave the machine.
+- Helpers for turning breach records into readable text.
 """
+import hashlib
+import html
+import re
+from urllib.parse import quote
+
 import requests
-import json
 
 HIBP_API_URL = "https://haveibeenpwned.com/api/v3/breachedaccount/{account}"
-USER_AGENT = "HIBP_APP_AI (Python)" 
+PWNED_PASSWORDS_URL = "https://api.pwnedpasswords.com/range/{prefix}"
+USER_AGENT = "Enhanced-HIBP-Checker (Python)"
+REQUEST_TIMEOUT = 30
 
 class HibpError(Exception):
     """Custom exception for HIBP API errors."""
@@ -22,12 +31,12 @@ def check_hibp(account: str, api_key: str) -> list:
         api_key: The HIBP API key.
 
     Returns:
-        A list of breach dictionaries if found, an empty list if no breaches.
+        A list of breach dictionaries (newest first) if found, an empty list if no breaches.
 
     Raises:
-        HibpError: If there's an API error (such as rate limiting, invalid key, or if not found).
-        requests.exceptions.RequestException: If there's a network-related error.
+        HibpError: If there's an API or network error (such as rate limiting or an invalid key).
     """
+    account = (account or "").strip()
     if not api_key:
         raise HibpError("HIBP API Key is missing. Please set it in Settings.")
     if not account:
@@ -36,38 +45,86 @@ def check_hibp(account: str, api_key: str) -> list:
     headers = {
         "hibp-api-key": api_key,
         "User-Agent": USER_AGENT,
-        "format": "json"
     }
-    url = HIBP_API_URL.format(account=account)
+    # The account must be URL encoded so characters like '/', '?' or '#' can't alter the request path.
+    url = HIBP_API_URL.format(account=quote(account, safe=""))
+    response = _get(url, headers=headers, params={"truncateResponse": "false"})
 
+    if response.status_code == 200:
+        try:
+            breaches = response.json()
+        except ValueError:
+            raise HibpError("Failed to decode HIBP API response.")
+        return sorted(breaches, key=lambda b: b.get("BreachDate") or "", reverse=True)
+    if response.status_code == 404:
+        return []
+    if response.status_code == 400:
+        raise HibpError("Bad Request: the account format is not valid.")
+    if response.status_code == 401:
+        raise HibpError("Unauthorized: the HIBP API key is invalid.")
+    if response.status_code == 403:
+        raise HibpError("Forbidden: HIBP rejected the request (check the User-Agent).")
+    if response.status_code == 429:
+        retry_after = response.headers.get("Retry-After", "a few")
+        raise HibpError(f"Rate limited. Please wait {retry_after} seconds before trying again.")
+    if response.status_code == 503:
+        raise HibpError("Service Unavailable. HIBP might be down or undergoing maintenance.")
+    raise HibpError(f"HIBP API Error: unexpected response (HTTP {response.status_code}).")
+
+def check_pwned_password(password: str) -> int:
+    """Returns how many times a password appears in the Pwned Passwords corpus (0 if never).
+
+    Uses the k-anonymity model: only the first 5 hex characters of the SHA-1 hash are sent.
+    Padding is requested so the response size doesn't reveal anything about the prefix.
+
+    Raises:
+        HibpError: If the password is empty or there's an API or network error.
+    """
+    if not password:
+        raise HibpError("Password cannot be empty.")
+
+    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    prefix, suffix = sha1[:5], sha1[5:]
+    response = _get(
+        PWNED_PASSWORDS_URL.format(prefix=prefix),
+        headers={"User-Agent": USER_AGENT, "Add-Padding": "true"},
+    )
+    if response.status_code != 200:
+        raise HibpError(f"Pwned Passwords API Error: {response.status_code}")
+
+    for line in response.text.splitlines():
+        candidate, _, count = line.partition(":")
+        if candidate.strip() == suffix:
+            # Padding entries have a count of 0, so they never produce a false positive.
+            return int(count.strip() or 0)
+    return 0
+
+def html_to_text(text: str) -> str:
+    """Strips tags from HIBP's HTML breach descriptions and decodes entities."""
+    return html.unescape(re.sub(r"<[^>]+>", "", text or "")).strip()
+
+def format_breaches_for_ai(account: str, breaches: list) -> str:
+    """Builds a plain text summary of breaches to give the AI advisor as context."""
+    parts = [f"HIBP check results for account: {account}", f"Number of breaches: {len(breaches)}"]
+    for breach in breaches:
+        parts.append("")
+        parts.append(f"Breach: {breach.get('Title', 'Unknown')}")
+        parts.append(f"Domain: {breach.get('Domain') or 'N/A'}")
+        parts.append(f"Breach date: {breach.get('BreachDate', 'N/A')}")
+        parts.append(f"Accounts affected: {breach.get('PwnCount') or 0:,}")
+        parts.append(f"Compromised data: {', '.join(breach.get('DataClasses', [])) or 'N/A'}")
+        if breach.get("IsVerified") is False:
+            parts.append("Note: this breach is unverified.")
+        parts.append(f"Description: {html_to_text(breach.get('Description', ''))}")
+    return "\n".join(parts)
+
+def _get(url: str, headers: dict, params: dict = None) -> requests.Response:
+    """Performs a GET request, converting network failures into HibpError."""
     try:
-        response = requests.get(url, headers=headers, params={'truncateResponse': 'false'}, timeout=30)
-
-        if response.status_code == 200:
-            try:
-                breaches = response.json()
-                return breaches
-            except json.JSONDecodeError as e:
-                raise HibpError("Failed to decode HIBP API response.")
-        elif response.status_code == 404:
-            return []
-        elif response.status_code == 400:
-            raise HibpError(f"Bad Request: Invalid account format? ({response.text})")
-        elif response.status_code == 401:
-            raise HibpError("Unauthorized: Invalid API Key?")
-        elif response.status_code == 403:
-            raise HibpError("Forbidden: Check User-Agent header?")
-        elif response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 1))
-            raise HibpError(f"Rate Limited. Please wait {retry_after} seconds before trying again.")
-        elif response.status_code == 503:
-             raise HibpError("Service Unavailable. HIBP might be down or undergoing maintenance.")
-        else:
-            raise HibpError(f"HIBP API Error: {response.status_code} - {response.text}")
-
+        return requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
     except requests.exceptions.Timeout:
-        raise HibpError("Request to HIBP API timed out.")
-    except requests.exceptions.ConnectionError as e:
-        raise HibpError(f"Could not connect to HIBP API: {e}")
+        raise HibpError("The request to HIBP timed out.")
+    except requests.exceptions.ConnectionError:
+        raise HibpError("Could not connect to HIBP. Check your internet connection.")
     except requests.exceptions.RequestException as e:
-        raise HibpError(f"An unexpected network error occurred: {e}") 
+        raise HibpError(f"An unexpected network error occurred: {e}")

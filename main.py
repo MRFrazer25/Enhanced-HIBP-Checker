@@ -8,10 +8,11 @@ def main():
     Sets up the main window and starts the application event loop.
     """
     app = QApplication(sys.argv)
+    app.setApplicationName("Enhanced HIBP Checker")
+    app.setStyle("Fusion")  # Consistent look across platforms that works well with the dark stylesheet
     window = MainWindow()
     window.show()
-    exit_code = app.exec()
-    sys.exit(exit_code)
+    sys.exit(app.exec())
 
 if __name__ == '__main__':
     main()

@@ -1,37 +1,33 @@
-# Enhanced HIBP Checker 
+# Enhanced HIBP Checker
 
-**Enhanced HIBP Checker** is a desktop application written in mostly python designed to help you enhance your online security. It allows you to check email addresses or usernames against the Have I Been Pwned (HIBP) database for known data breaches and provides AI-powered advice on cybersecurity matters using a local Ollama instance.
+**Enhanced HIBP Checker** is a Python desktop application that helps you improve your online security. It checks email addresses or usernames against the [Have I Been Pwned](https://haveibeenpwned.com/) (HIBP) breach database, checks whether a password has appeared in known breaches, and gives AI-powered security advice using a model running locally through [Ollama](https://ollama.com/).
 
 ## Features
 
-*   **HIBP Check:** Securely check if your account details have been compromised in known data breaches.
-*   **AI Advisor:** Engage in a conversation with a local AI model (via Ollama) for:
-    *   Personalized advice based on HIBP breach results.
-    *   General guidance on creating strong passwords.
-    *   Answers to other cybersecurity questions.
-*   **Secure API Key Storage:** Your HIBP API key is stored securely in your system's keyring, not in plain text.
-*   **Local AI Processing:** All AI interactions are processed locally using Ollama, ensuring your conversations remain private.
-*   **Customizable Settings:**
-    *   Configure your HIBP API key.
-    *   Set the Ollama API endpoint.
-    *   Select your preferred Ollama model from your local installation.
+*   **Breach Check:** See which known data breaches include your email address or username, when they happened, and what kinds of data were exposed.
+*   **Password Check:** Find out whether a password has appeared in a data breach using the free Pwned Passwords service. The password never leaves your computer: only the first 5 characters of its SHA-1 hash are sent (k-anonymity), with response padding enabled.
+*   **AI Advisor:** Chat with a local AI model for:
+    *   Personalized, prioritized advice based on your breach results (one click from the Breach Check tab).
+    *   Follow-up questions. The advisor remembers the conversation.
+    *   General guidance on passwords, multi-factor authentication, phishing, and more.
+    *   Responses stream in live, are formatted (bold, lists, headings), and can be stopped at any time.
+*   **Secure API Key Storage:** Your HIBP API key is stored in your operating system's keyring, never in plain text, and is masked in the UI.
+*   **Local AI Processing:** AI conversations go only to your Ollama server. The chat view loads nothing from the internet.
+*   **Responsive UI:** All network requests run in the background, so the window never freezes.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
-
-*   **Python:** Version 3.7 or newer.
-*   **Ollama:** Download and install Ollama from [https://ollama.com/](https://ollama.com/).
-    *   Ensure Ollama is running before using the AI Advisor.
-    *   It is recommended to use Ollama version 0.1.32 or later for full compatibility with the model selection feature (which uses `/api/tags`). Always use the latest Ollama version for security updates.
+*   **Python:** Version 3.10 or newer.
+*   **Ollama:** Download and install from [https://ollama.com/](https://ollama.com/). Keep it up to date for security fixes.
+*   **HIBP API key** (for breach checks only): available from [haveibeenpwned.com/API/Key](https://haveibeenpwned.com/API/Key). The Password Check does not need a key.
 *   **Git:** For cloning the repository.
 
 ## Setup Instructions
 
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/MRFrazer25/HIBP_App_AI
-    cd HIBP_App_AI
+    git clone https://github.com/MRFrazer25/Enhanced-HIBP-Checker.git
+    cd Enhanced-HIBP-Checker
     ```
 
 2.  **Create and Activate a Virtual Environment:**
@@ -50,19 +46,15 @@ Before you begin, ensure you have the following installed:
     ```bash
     pip install -r requirements.txt
     ```
-    This will install `PyQt6`, `requests`, `keyring`, and other necessary packages.
+    This installs `PyQt6`, `PyQt6-WebEngine`, `requests`, and `keyring`.
 
 4.  **Prepare Ollama:**
-    *   Ensure Ollama is installed and running.
-    *   Pull a model to use with the AI Advisor. For example:
+    *   Make sure Ollama is installed and running.
+    *   Pull a model to use with the AI Advisor, for example:
         ```bash
-        ollama pull phi4:mini
+        ollama pull phi4-mini
         ```
-    *   Make sure the model is running by doing:
-        ```bash
-        ollama run phi4-mini
-        ```
-        Other models like `llama3:8b` can also be used. The application allows you to select from any model you have pulled into your local Ollama instance.
+        Other models such as `llama3.1:8b` or `granite4.2:8b` also work. Larger models give better advice but need more memory. Ollama loads the model automatically when the first message is sent.
 
 5.  **Run the Application:**
     ```bash
@@ -71,46 +63,73 @@ Before you begin, ensure you have the following installed:
 
 ## Usage Guide
 
-1.  **First-Time Setup (Settings Tab):**
-    *   Navigate to the **Settings** tab.
-    *   **HIBP API Key:** Enter your HIBP API key (get one from [Have I Been Pwned](https://haveibeenpwned.com/API/Key)) and click "Save HIBP API Key".
-    *   **Ollama Settings:**
-        *   The Ollama API endpoint usually defaults to `http://localhost:11434/api/generate`. Adjust if your Ollama setup is different.
-        *   Click "Refresh Models" to load your locally installed Ollama models into the dropdown.
-        *   Select your preferred model from the list.
-        *   Click "Save Ollama Settings".
+1.  **First-Time Setup (Settings tab):**
+    *   **Have I Been Pwned:** Paste your HIBP API key and click **Save API Key**. Use **Show** to reveal it and **Remove API Key** to delete it from the keyring.
+    *   **Ollama:**
+        *   **Server URL** defaults to `http://localhost:11434`. Change it if Ollama runs elsewhere.
+        *   Click **Refresh Models** to list your installed models, choose one (or type a model name), and click **Save Ollama Settings**.
 
-2.  **HIBP Checker Tab:**
-    *   Enter an email address or username you want to check.
-    *   Click "Check for Breaches". Results will appear below.
-    *   If breaches are found, you can click "Get AI Advice on These Breaches" to automatically send the breach details to the AI Advisor for recommendations.
+2.  **Breach Check tab:**
+    *   Enter an email address or username and press Enter or click **Check for Breaches**.
+    *   If breaches are found, click **Get AI Advice on These Breaches** to send a summary to the AI Advisor.
 
-3.  **AI Advisor Tab:**
-    *   Ensure Ollama is running and configured in Settings.
-    *   Type your cybersecurity-related questions or prompts into the input field.
-    *   Press Enter or click "Send". The AI will stream its response into the chat window.
+3.  **Password Check tab:**
+    *   Enter a password and press Enter or click **Check Password** to see how many times it appears in known breaches.
+
+4.  **AI Advisor tab:**
+    *   Type a question and press Enter or click **Send**. While a response is streaming, the button becomes **Stop**.
+    *   Click **New Chat** to clear the conversation and start fresh.
 
 ## Security and Privacy
 
-*   **HIBP API Key:** Your HIBP API key is stored using the `keyring` library, which leverages your operating system's native credential manager (e.g., Windows Credential Manager, macOS Keychain, Linux Secret Service). It is not stored in plain text by the application.
-*   **Ollama Interactions:** All communication with the AI model via Ollama is done locally on your machine. Your prompts and the AI's responses are not sent to any external cloud services by this application. Data privacy depends on the Ollama setup and the models you use.
-*   **Data Input:** Be mindful of the data you input into the HIBP check and AI advisor. While the application aims for local processing, always exercise caution with sensitive personal information.
+*   **HIBP API Key:** Stored with the `keyring` library, which uses your operating system's credential manager (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+*   **Password Check:** Only a 5-character prefix of the password's SHA-1 hash is sent to `api.pwnedpasswords.com`. The full password and hash never leave your machine, and passwords are never sent to the AI.
+*   **AI Advisor:** Conversations are sent only to the Ollama server configured in Settings (your own machine by default). If you point the app at a remote Ollama server, your messages and breach summaries go to that server.
+*   **Chat Rendering:** Model output is HTML-escaped before formatting is applied, and the chat page has a strict Content-Security-Policy, so model output can't run scripts or load remote content.
 *   **No Data Collection:** This application does not collect or transmit any personal data or usage statistics.
+
+## Running Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The tests mock all network calls, so they don't need an API key, internet access, or Ollama.
+
+## Project Structure
+
+```
+main.py                  Application entry point
+core/hibp_client.py      HIBP breach and Pwned Passwords API calls
+core/ollama_client.py    Ollama model listing and streaming chat
+core/secure_storage.py   API key storage in the system keyring
+ui/main_window.py        Main window and tabs
+ui/styles.py             Dark theme stylesheet
+ui/html/                 AI Advisor chat page (HTML/JS)
+tests/                   Unit tests
+```
 
 ## Troubleshooting
 
 *   **"Could not connect to Ollama..." / AI Advisor not working:**
-    *   Ensure Ollama is installed and running on your system. You can usually check this by opening a terminal and typing `ollama list`.
-    *   Verify the Ollama API endpoint in the Settings tab is correct (default: `http://localhost:11434/api/generate`).
-    *   Make sure you have pulled at least one model into Ollama (such as `ollama pull phi4:mini`).
+    *   Make sure Ollama is running. `ollama list` in a terminal should respond.
+    *   Check that the Server URL in Settings is correct (default: `http://localhost:11434`).
+    *   Make sure you have pulled at least one model (for example `ollama pull phi4-mini`).
+    *   If you see "model ... not found", click **Refresh Models** in Settings and save a model you have installed.
+
+*   **"Unauthorized: the HIBP API key is invalid":** Check that the key was pasted correctly and that your HIBP subscription is active.
+
+*   **"Rate limited":** Your HIBP subscription limits how many checks you can make per minute. Wait the number of seconds shown and try again.
 
 *   **"Error saving/retrieving HIBP API Key..." / Keyring issues:**
-    *   The `keyring` library depends on a system-level credential store. On some Linux distributions, you might need to install additional packages (such as `gnome-keyring` or `kwallet`) and ensure a D-Bus session is active.
-    *   If errors persist, consult the `keyring` library documentation for backend-specific troubleshooting.
-*   **Application Fails to Start / Missing Dependencies:**
-    *   Ensure you have activated your Python virtual environment before running `pip install -r requirements.txt` and `python main.py`.
-    *   Check for any error messages during `pip install` that might indicate missing system libraries needed by PyQt6 or other dependencies.
+    *   `keyring` depends on a system credential store. On some Linux distributions you may need to install `gnome-keyring` or `kwallet` and make sure a D-Bus session is running.
+    *   If errors persist, see the `keyring` documentation for backend-specific troubleshooting.
+
+*   **Application fails to start / missing dependencies:**
+    *   Activate your virtual environment before running `pip install -r requirements.txt` and `python main.py`.
+    *   Check the `pip install` output for missing system libraries needed by PyQt6 or PyQt6-WebEngine.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

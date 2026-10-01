@@ -1,9 +1,17 @@
 """
 Defines the dark mode stylesheet for the PyQt6 application.
 
-This module contains a single string, `DARK_MODE_STYLESHEET`, which includes
-CSS-like rules to style various Qt widgets for a consistent dark theme.
+This module contains `DARK_MODE_STYLESHEET`, which includes CSS-like rules to
+style various Qt widgets for a consistent dark theme, and `STATUS_COLORS` for
+status messages.
 """
+
+STATUS_COLORS = {
+    "info": "#aaaaaa",
+    "success": "#4caf50",
+    "warning": "#ffb74d",
+    "error": "#ef5350",
+}
 
 DARK_MODE_STYLESHEET = """
 QWidget {
@@ -97,14 +105,76 @@ QPushButton:pressed {
     border: 1px solid #00396e;
 }
 
+QPushButton:disabled {
+    background-color: #3c3c3c;
+    border: 1px solid #444444;
+    color: #888888;
+}
+
+QPushButton#secondary {
+    background-color: #3c3c3c;
+    border: 1px solid #555555;
+}
+
+QPushButton#secondary:hover {
+    background-color: #4a4a4a;
+}
+
+QPushButton#secondary:pressed {
+    background-color: #555555;
+}
+
+QLineEdit:disabled {
+    color: #888888;
+}
+
+QCheckBox {
+    spacing: 6px;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #888888;
+    border-radius: 3px;
+    background-color: #3c3c3c;
+}
+
+QCheckBox::indicator:hover {
+    border: 1px solid #0078d7;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0078d7;
+    border: 1px solid #0078d7;
+}
+
+QGroupBox {
+    border: 1px solid #444444;
+    border-radius: 4px;
+    margin-top: 14px;
+    padding: 10px 8px 6px 8px;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+}
+
+QGroupBox QLabel, QGroupBox QPushButton, QGroupBox QLineEdit, QGroupBox QComboBox, QGroupBox QCheckBox {
+    font-weight: normal;
+}
+
 QTextEdit {
     background-color: #333333;
     color: #ffffff;
     border: 1px solid #555555;
     border-radius: 3px;
     padding: 5px;
-    selection-background-color: #333333; /* Make selection background same as item background */
-    selection-color: #ffffff; /* Make selection text color same as normal text */
+    selection-background-color: #0078d7;
+    selection-color: #ffffff;
 }
 
 QLabel {

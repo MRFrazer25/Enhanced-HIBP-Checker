@@ -1,25 +1,24 @@
-<!-- 
+<!DOCTYPE html>
+<!--
   This HTML file provides the basic structure and styling for the AI Advisor chat interface.
   It is loaded into a QWebEngineView in the PyQt6 application.
   Messages are dynamically added to the 'message-container' div by JavaScript (chat_logic.js).
-  Includes DOMPurify for potential HTML sanitization, though current AI output is plain text.
+  The page loads nothing from the network; the Content-Security-Policy enforces that.
 -->
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js" integrity="sha512-AcoX9A5oQxFoXN929R2XgB5jjptH8fPZl547McbTb5L0TzG2YgPAXuFajgU5CV0E9T8jTGNyFPlVT93A8G9l9Q==" crossorigin="anonymous"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, "Helvetica Neue", sans-serif;
             font-size: 10pt;
             background-color: #2b2b2b;
             color: #ffffff;
             margin: 0;
             padding: 10px;
-            overflow-y: auto;
         }
 
         .message-container {
@@ -32,34 +31,71 @@
             border-radius: 18px;
             margin-bottom: 8px;
             max-width: 75%;
-            line-height: 1.4;
-            word-wrap: break-word;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .message .label {
+            font-weight: bold;
+            margin-bottom: 2px;
         }
 
         .user-message {
             background-color: #0078d7; /* Primary button color */
-            color: white;
             align-self: flex-end;
             border-bottom-right-radius: 5px;
         }
 
-        .ai-message {
-            background-color: #3c3c3c;
-            color: white;
-            align-self: flex-start;
-            border-bottom-left-radius: 5px;
-            white-space: pre-line; /* Preserve newlines */
-        }
-        
-        .ai-message h1, .ai-message h2, .ai-message h3 {
-            margin-top: 0.5em;
-            margin-bottom: 0.2em;
-        }
-        .ai-message p {
-            margin-top: 0.2em;
-            margin-bottom: 0.2em;
+        .user-message .body {
+            white-space: pre-wrap;
         }
 
+        .user-message ::selection {
+            background: #00396e;
+        }
+
+        .ai-message {
+            background-color: #3c3c3c;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+
+        .ai-message.error {
+            background-color: #5a2a2a;
+        }
+
+        .ai-message .body > :first-child { margin-top: 0; }
+        .ai-message .body > :last-child { margin-bottom: 0; }
+
+        .ai-message p { margin: 0.4em 0; }
+        .ai-message ul, .ai-message ol { margin: 0.4em 0; padding-left: 1.5em; }
+        .ai-message li { margin: 0.15em 0; }
+        .ai-message h3, .ai-message h4, .ai-message h5, .ai-message h6 { margin: 0.7em 0 0.3em; }
+
+        .ai-message code {
+            font-family: Consolas, "Cascadia Mono", Menlo, monospace;
+            background-color: #2b2b2b;
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+
+        .ai-message pre {
+            background-color: #2b2b2b;
+            border-radius: 6px;
+            padding: 8px;
+            overflow-x: auto;
+        }
+
+        .ai-message pre code {
+            padding: 0;
+        }
+
+        .ai-message .note {
+            margin-top: 6px;
+            font-size: 0.85em;
+            font-style: italic;
+            color: #aaa;
+        }
 
         .system-message {
             font-style: italic;
@@ -67,22 +103,28 @@
             text-align: center;
             font-size: 0.9em;
             padding: 5px 0;
-        }
-        
-        /* Disable text selection highlight universally */
-        ::selection {
-            background: transparent;
+            align-self: center;
         }
 
-        /* MODIFIED CSS RULE */
+        ::-webkit-scrollbar { width: 12px; }
+        ::-webkit-scrollbar-track { background: #2b2b2b; }
+        ::-webkit-scrollbar-thumb { background: #5a5a5a; border-radius: 6px; border: 3px solid #2b2b2b; }
+        ::-webkit-scrollbar-thumb:hover { background: #6a6a6a; }
+
+        ::selection {
+            background: #0078d7;
+            color: #ffffff;
+        }
+
         .thinking-indicator {
+            color: #bbb;
             animation: blink 1s infinite;
         }
+
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-
     </style>
 </head>
 <body>
@@ -90,6 +132,6 @@
         <!-- Messages will be appended here -->
     </div>
 
-    <script src="chat_logic.js" defer></script>
+    <script src="chat_logic.js"></script>
 </body>
 </html>
