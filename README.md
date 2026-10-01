@@ -69,6 +69,8 @@
         *   **Server URL** defaults to `http://localhost:11434`. Change it if Ollama runs elsewhere.
         *   Click **Refresh Models** to list your installed models, choose one (or type a model name), and click **Save Ollama Settings**.
 
+    *   **No API key yet?** You can try the Breach Check with HIBP's public test key: save `00000000000000000000000000000000` as the API key and check one of HIBP's test accounts, such as `multiple-breaches@hibp-integration-tests.com` (3 breaches) or `opt-out@hibp-integration-tests.com` (no breaches). The test key only works for `@hibp-integration-tests.com` accounts.
+
 2.  **Breach Check tab:**
     *   Enter an email address or username and press Enter or click **Check for Breaches**.
     *   If breaches are found, click **Get AI Advice on These Breaches** to send a summary to the AI Advisor.
