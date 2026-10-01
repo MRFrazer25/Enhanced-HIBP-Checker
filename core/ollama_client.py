@@ -60,7 +60,9 @@ def stream_chat(base_url: str, model: str, messages: list, should_stop=lambda: F
         OllamaError: If Ollama can't be reached or reports an error.
     """
     url = f"{normalize_base_url(base_url)}/api/chat"
-    payload = {"model": model, "messages": messages, "stream": True}
+    # Thinking is turned off: on typical laptops (CPU only) a reasoning phase can add minutes
+    # before the first word appears, and it isn't needed for this kind of advice.
+    payload = {"model": model, "messages": messages, "stream": True, "think": False}
     try:
         with requests.post(url, json=payload, timeout=CHAT_TIMEOUT, stream=True) as response:
             if response.status_code != 200:

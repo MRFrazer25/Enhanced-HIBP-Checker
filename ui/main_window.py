@@ -34,7 +34,9 @@ ORG_NAME = "HIBPappOrg"
 APP_NAME = "HIBPapp"
 SETTINGS_OLLAMA_ENDPOINT = "ollama/endpoint"
 SETTINGS_OLLAMA_MODEL = "ollama/model"
-DEFAULT_OLLAMA_MODEL = "phi4-mini"
+# There is deliberately no default model: the user picks one of their installed models.
+# This is only used as the suggestion when no models are installed.
+SUGGESTED_OLLAMA_MODEL = "gemma4:e4b"
 CHAT_HTML_PATH = os.path.join(os.path.dirname(__file__), "html", "chat_template.html")
 
 # Keep the conversation small enough for the context window of small local models.
@@ -272,6 +274,8 @@ class MainWindow(QMainWindow):
         if self._chat_busy():
             QMessageBox.warning(self, "Busy", "Please wait for the current AI response to finish (or stop it).")
             return
+        if not self._ensure_model_selected():
+            return
 
         prompt = (
             "Data breaches were found for one of my accounts. Act as a security advisor and give me "
@@ -431,8 +435,25 @@ class MainWindow(QMainWindow):
         user_input = self.ai_input.text().strip()
         if not user_input or self._chat_busy():
             return
+        if not self._ensure_model_selected():
+            return
         self.ai_input.clear()
         self._send_to_ai(user_input)
+
+    def _saved_model(self) -> str:
+        return (self.settings.value(SETTINGS_OLLAMA_MODEL, "") or "").strip()
+
+    def _ensure_model_selected(self) -> bool:
+        """Returns True if an AI model has been chosen, otherwise sends the user to Settings to pick one."""
+        if self._saved_model():
+            return True
+        QMessageBox.information(
+            self, "Choose a Model",
+            "Please choose which Ollama model the AI Advisor should use in the Settings tab.",
+        )
+        self.tabs.setCurrentWidget(self.settings_tab)
+        self.ollama_model_combo.setFocus()
+        return False
 
     def _send_to_ai(self, prompt: str, display_text: str = None):
         """Shows the user's message, then streams a reply from Ollama on a background thread.
@@ -459,7 +480,7 @@ class MainWindow(QMainWindow):
         messages.append(self.pending_user_message)
 
         base_url = self.settings.value(SETTINGS_OLLAMA_ENDPOINT, DEFAULT_OLLAMA_URL)
-        model = self.settings.value(SETTINGS_OLLAMA_MODEL, DEFAULT_OLLAMA_MODEL)
+        model = self._saved_model()
         stop_event = threading.Event()
         self.chat_stop_event = stop_event
         self.ai_send_button.setText("Stop")
@@ -597,6 +618,9 @@ class MainWindow(QMainWindow):
         self.ollama_model_combo = QComboBox()
         self.ollama_model_combo.setEditable(True)  # Allows typing a model name if listing fails
         self.ollama_model_combo.setMinimumWidth(250)
+        self.ollama_model_combo.lineEdit().setPlaceholderText("Choose a model")
+        self.ollama_model_combo.setCurrentIndex(-1)
+        self.ollama_model_combo.textActivated.connect(self._on_model_chosen)  # Picking from the list saves it
         model_row.addWidget(self.ollama_model_combo, 1)
         self.refresh_models_button = QPushButton("Refresh Models")
         self.refresh_models_button.setObjectName("secondary")
@@ -650,6 +674,13 @@ class MainWindow(QMainWindow):
         self.settings.setValue(SETTINGS_OLLAMA_MODEL, model)
         self._set_status(self.ollama_settings_status_label, f"Saved. The AI Advisor will use {model}.", "success")
 
+    def _on_model_chosen(self, model: str):
+        """Saves the model as soon as it's picked from the dropdown."""
+        model = model.strip()
+        if model:
+            self.settings.setValue(SETTINGS_OLLAMA_MODEL, model)
+            self._set_status(self.ollama_settings_status_label, f"Saved. The AI Advisor will use {model}.", "success")
+
     def _populate_ollama_models(self):
         """Fetches the list of locally installed Ollama models in the background."""
         self.refresh_models_button.setEnabled(False)
@@ -657,38 +688,46 @@ class MainWindow(QMainWindow):
         self._run_in_background(list_models, self._on_models_loaded, self.ollama_endpoint_input.text())
 
     def _on_models_loaded(self, result):
-        """Fills the model dropdown, keeping the saved model selected when possible."""
+        """Fills the model dropdown and selects the saved model if it's installed.
+
+        The saved model is never changed automatically: if it's missing, the user is asked to choose.
+        """
         self.refresh_models_button.setEnabled(True)
-        saved_model = self.settings.value(SETTINGS_OLLAMA_MODEL, DEFAULT_OLLAMA_MODEL)
+        saved_model = self._saved_model()
         self.ollama_model_combo.clear()
 
         if isinstance(result, Exception):
-            self.ollama_model_combo.addItem(saved_model)
+            if saved_model:
+                self.ollama_model_combo.addItem(saved_model)
             self._set_status(self.ollama_settings_status_label, str(result), "error")
             return
         if not result:
-            self.ollama_model_combo.addItem(saved_model)
+            self.ollama_model_combo.setCurrentIndex(-1)
             self._set_status(
                 self.ollama_settings_status_label,
-                f"No models installed. Pull one first, for example: ollama pull {DEFAULT_OLLAMA_MODEL}",
+                f"No models installed. Pull one first, for example: ollama pull {SUGGESTED_OLLAMA_MODEL}",
                 "warning",
             )
             return
 
         self.ollama_model_combo.addItems(result)
         # Ollama reports names with a tag (e.g. "phi4-mini:latest"); match the saved name with or without it.
-        matches = [name for name in result if name == saved_model or name == f"{saved_model}:latest"]
+        matches = [name for name in result if saved_model and name in (saved_model, f"{saved_model}:latest")]
         if matches:
             self.ollama_model_combo.setCurrentText(matches[0])
-            if matches[0] != saved_model:
-                self.settings.setValue(SETTINGS_OLLAMA_MODEL, matches[0])
+            self._set_status(
+                self.ollama_settings_status_label,
+                f"Found {len(result)} model{'s' if len(result) != 1 else ''}. Using {matches[0]}.",
+                "success",
+            )
+            return
+
+        self.ollama_model_combo.setCurrentIndex(-1)
+        if saved_model:
+            message = f"Your saved model '{saved_model}' isn't installed. Choose another model."
         else:
-            self.settings.setValue(SETTINGS_OLLAMA_MODEL, result[0])
-        self._set_status(
-            self.ollama_settings_status_label,
-            f"Found {len(result)} model{'s' if len(result) != 1 else ''}.",
-            "success",
-        )
+            message = "Choose a model for the AI Advisor."
+        self._set_status(self.ollama_settings_status_label, message, "warning")
 
     def closeEvent(self, event):
         """Stops any AI response in progress before the window closes."""

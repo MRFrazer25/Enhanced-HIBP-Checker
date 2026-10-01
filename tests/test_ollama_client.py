@@ -53,6 +53,7 @@ def test_stream_chat_yields_content(monkeypatch):
     assert "".join(stream_chat("http://localhost:11434/api/generate", "phi4-mini", messages)) == "Hello"
     assert captured["url"] == "http://localhost:11434/api/chat"
     assert captured["payload"]["messages"] == messages
+    assert captured["payload"]["think"] is False
 
 def test_stream_chat_stops_early(monkeypatch):
     monkeypatch.setattr(ollama_client.requests, "post", lambda *a, **k: FakeStream([chunk("a"), chunk("b")]))

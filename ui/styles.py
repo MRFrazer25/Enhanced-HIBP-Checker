@@ -83,10 +83,6 @@ QComboBox::drop-down {
     border-bottom-right-radius: 3px;
 }
 
-QComboBox::down-arrow {
-    /* Intentionally left unstyled to preserve native look */
-}
-
 QPushButton {
     background-color: #0078d7; /* Primary button color */
     color: #ffffff;

@@ -5,7 +5,7 @@
 // as a JSON-encoded string literal, so arguments can never break out of the call.
 
 // Security model: all text is HTML-escaped FIRST, and only afterwards is a small,
-// fixed set of tags (p, strong, em, code, pre, ul, ol, li, h3-h6) added by the
+// fixed set of tags (p, strong, em, code, pre, ul, ol, li, h3-h6, hr) added by the
 // markdown renderer below. No attributes or links from the text are ever produced,
 // so model output can't inject HTML or script.
 
@@ -89,7 +89,11 @@ function renderMarkdown(text) {
 
         const indent = line.match(/^\s*/)[0].replace(/\t/g, '    ').length;
         let m;
-        if ((m = line.match(/^\s*(#{1,6})\s+(.*)$/))) {
+        if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+            flushParagraph();
+            closeLists();
+            out.push('<hr>');
+        } else if ((m = line.match(/^\s*(#{1,6})\s+(.*)$/))) {
             flushParagraph();
             closeLists();
             const level = Math.min(m[1].length + 2, 6);
@@ -131,12 +135,10 @@ function stripThinking(text) {
 function createMessage(type, labelText) {
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', `${type}-message`);
-    if (labelText) {
-        const label = document.createElement('div');
-        label.className = 'label';
-        label.textContent = labelText;
-        messageDiv.appendChild(label);
-    }
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = labelText;
+    messageDiv.appendChild(label);
     const body = document.createElement('div');
     body.className = 'body';
     messageDiv.appendChild(body);
@@ -146,11 +148,6 @@ function createMessage(type, labelText) {
 
 function addUserMessage(text) {
     createMessage('user', 'You').querySelector('.body').textContent = text;
-    scrollToBottom();
-}
-
-function addSystemMessage(text) {
-    createMessage('system').querySelector('.body').textContent = text;
     scrollToBottom();
 }
 

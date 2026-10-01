@@ -50,11 +50,11 @@
 
 4.  **Prepare Ollama:**
     *   Make sure Ollama is installed and running.
-    *   Pull a model to use with the AI Advisor, for example:
+    *   Pull a model to use with the AI Advisor. The recommended model is Google's Gemma 4 edge model (about 6.6 GB download):
         ```bash
-        ollama pull phi4-mini
+        ollama pull gemma4:e4b
         ```
-        Other models such as `llama3.1:8b` or `granite4.2:8b` also work. Larger models give better advice but need more memory. Ollama loads the model automatically when the first message is sent.
+        The app has no built-in default model. You choose any installed model in Settings (see below). See [Choosing a Model](#choosing-a-model) for how the options compare.
 
 5.  **Run the Application:**
     ```bash
@@ -67,8 +67,7 @@
     *   **Have I Been Pwned:** Paste your HIBP API key and click **Save API Key**. Use **Show** to reveal it and **Remove API Key** to delete it from the keyring.
     *   **Ollama:**
         *   **Server URL** defaults to `http://localhost:11434`. Change it if Ollama runs elsewhere.
-        *   Click **Refresh Models** to list your installed models, choose one (or type a model name), and click **Save Ollama Settings**.
-
+        *   Click **Refresh Models** to list your installed models, then choose one. Picking a model from the list saves it right away. The AI Advisor asks you to choose a model if none has been picked yet.
     *   **No API key yet?** You can try the Breach Check with HIBP's public test key: save `00000000000000000000000000000000` as the API key and check one of HIBP's test accounts, such as `multiple-breaches@hibp-integration-tests.com` (3 breaches) or `opt-out@hibp-integration-tests.com` (no breaches). The test key only works for `@hibp-integration-tests.com` accounts.
 
 2.  **Breach Check tab:**
@@ -81,6 +80,20 @@
 4.  **AI Advisor tab:**
     *   Type a question and press Enter or click **Send**. While a response is streaming, the button becomes **Stop**.
     *   Click **New Chat** to clear the conversation and start fresh.
+
+## Choosing a Model
+
+Any Ollama chat model works. These were tested on the app's real job (advice for an account in 3 breaches, plus a general password question) on a laptop running on CPU only (AMD Ryzen 7 5825U, 32 GB RAM, no dedicated GPU):
+
+| Model | Download | Breach advice | Quality |
+|---|---|---|---|
+| `gemma4:e4b` (recommended) | 6.6 GB | ~85 s | Best. Correctly prioritised the breach that exposed credit cards and addresses, and tailored advice to each breach. |
+| `qwen3.5:4b` | 3.4 GB | ~85 s | Well written, but stated breach details incorrectly (said no credit cards were exposed). |
+| `phi4-mini` | 2.5 GB | ~70 s | Fastest, but generic advice that barely used the breach details. |
+| `qwen3.5:2b` | 2.7 GB | ~90 s | Not recommended. Downplayed the risk and suggested a website that doesn't exist. |
+| `granite4.2:8b` | 5.3 GB | ~7 min | Too slow without a GPU. |
+
+With a dedicated GPU, responses are much faster and larger models (such as `gemma4:12b`) become practical. The app turns off "thinking" mode for reasoning models so answers start without a long silent pause.
 
 ## Security and Privacy
 
@@ -117,8 +130,9 @@ tests/                   Unit tests
 *   **"Could not connect to Ollama..." / AI Advisor not working:**
     *   Make sure Ollama is running. `ollama list` in a terminal should respond.
     *   Check that the Server URL in Settings is correct (default: `http://localhost:11434`).
-    *   Make sure you have pulled at least one model (for example `ollama pull phi4-mini`).
-    *   If you see "model ... not found", click **Refresh Models** in Settings and save a model you have installed.
+    *   Make sure you have pulled at least one model (for example `ollama pull gemma4:e4b`).
+    *   If you see "model ... not found" or Settings says your saved model isn't installed, click **Refresh Models** and choose a model you have installed.
+    *   Responses are slow on computers without a dedicated GPU. Try a smaller model such as `phi4-mini` if waiting is a problem.
 
 *   **"Unauthorized: the HIBP API key is invalid":** Check that the key was pasted correctly and that your HIBP subscription is active.
 
