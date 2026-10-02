@@ -11,6 +11,7 @@
     *   Follow-up questions. The advisor remembers the conversation.
     *   General guidance on passwords, multi-factor authentication, phishing, and more.
     *   Responses stream in live, are formatted (bold, lists, headings), and can be stopped at any time.
+    *   Stays focused on security: it answers in English, politely declines off-topic requests, and refuses to help with anything harmful such as breaking into accounts or writing phishing emails.
 *   **Secure API Key Storage:** Your HIBP API key is stored in your operating system's keyring, never in plain text, and is masked in the UI.
 *   **Local AI Processing:** AI conversations go only to your Ollama server. The chat view loads nothing from the internet.
 *   **Responsive UI:** All network requests run in the background, so the window never freezes.
@@ -132,7 +133,7 @@ tests/                   Unit tests
     *   Check that the Server URL in Settings is correct (default: `http://localhost:11434`).
     *   Make sure you have pulled at least one model (for example `ollama pull gemma4:e4b`).
     *   If you see "model ... not found" or Settings says your saved model isn't installed, click **Refresh Models** and choose a model you have installed.
-    *   Responses are slow on computers without a dedicated GPU. Try a smaller model such as `phi4-mini` if waiting is a problem.
+    *   Responses are slow on computers without a dedicated GPU. Smaller models answer faster but give less accurate advice (see [Choosing a Model](#choosing-a-model)).
 
 *   **"Unauthorized: the HIBP API key is invalid":** Check that the key was pasted correctly and that your HIBP subscription is active.
 

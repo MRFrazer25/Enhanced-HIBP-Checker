@@ -93,3 +93,17 @@ def test_unexpected_status_does_not_echo_server_body(fake_get):
 def test_format_breaches_handles_missing_fields():
     text = format_breaches_for_ai("x@example.com", [{"Title": "Mystery", "PwnCount": None}])
     assert "Accounts affected: 0" in text
+
+def test_format_breaches_explains_flags_and_date():
+    import datetime
+    text = format_breaches_for_ai("x@example.com", [
+        {"Title": "Logs", "IsStealerLog": True, "IsVerified": True},
+        {"Title": "Spam", "IsSpamList": True, "IsVerified": False},
+    ], today=datetime.date(2026, 10, 2))
+    assert "Checked on: 2026-10-02" in text
+    assert "malware" in text and "cleaning that device; only then" in text
+    assert "spam list" in text and "unverified" in text
+
+def test_breach_flags_labels():
+    assert [label for label, _ in hibp_client.breach_flags({"IsStealerLog": True, "IsVerified": True})] == ["stealer log"]
+    assert hibp_client.breach_flags({"IsVerified": True}) == []

@@ -7,6 +7,7 @@ Provides:
   first 5 characters of the password's SHA-1 hash ever leave the machine.
 - Helpers for turning breach records into readable text.
 """
+import datetime
 import hashlib
 import html
 import re
@@ -18,6 +19,24 @@ HIBP_API_URL = "https://haveibeenpwned.com/api/v3/breachedaccount/{account}"
 PWNED_PASSWORDS_URL = "https://api.pwnedpasswords.com/range/{prefix}"
 USER_AGENT = "Enhanced-HIBP-Checker (Python)"
 REQUEST_TIMEOUT = 30
+
+# HIBP breach flags: (field, value that triggers it, short label for the UI, explanation for the AI advisor)
+BREACH_FLAGS = [
+    ("IsStealerLog", True, "stealer log",
+     "This data came from info-stealing malware logs: a device used to log in was infected with malware "
+     "that captured saved credentials. The first step must be scanning and cleaning that device; only then "
+     "change passwords, otherwise the new passwords can be stolen too."),
+    ("IsMalware", True, "malware",
+     "This breach involved malware."),
+    ("IsSpamList", True, "spam list",
+     "This is a spam list: the email address is known to spammers, so expect more spam and phishing."),
+    ("IsVerified", False, "unverified",
+     "This breach is unverified: HIBP could not confirm it is genuine."),
+    ("IsFabricated", True, "likely fabricated",
+     "HIBP believes this breach data is likely fabricated."),
+    ("IsSensitive", True, "sensitive",
+     "HIBP marks this breach as sensitive (being in it may reveal something personal about the user)."),
+]
 
 class HibpError(Exception):
     """Custom exception for HIBP API errors."""
@@ -103,9 +122,18 @@ def html_to_text(text: str) -> str:
     """Strips tags from HIBP's HTML breach descriptions and decodes entities."""
     return html.unescape(re.sub(r"<[^>]+>", "", text or "")).strip()
 
-def format_breaches_for_ai(account: str, breaches: list) -> str:
+def breach_flags(breach: dict) -> list:
+    """Returns (label, explanation) pairs for the HIBP flags that apply to a breach."""
+    return [(label, note) for field, value, label, note in BREACH_FLAGS if breach.get(field) is value]
+
+def format_breaches_for_ai(account: str, breaches: list, today: datetime.date = None) -> str:
     """Builds a plain text summary of breaches to give the AI advisor as context."""
-    parts = [f"HIBP check results for account: {account}", f"Number of breaches: {len(breaches)}"]
+    today = today or datetime.date.today()
+    parts = [
+        f"HIBP check results for account: {account}",
+        f"Checked on: {today.isoformat()} (use this to judge how old each breach is)",
+        f"Number of breaches: {len(breaches)}",
+    ]
     for breach in breaches:
         parts.append("")
         parts.append(f"Breach: {breach.get('Title', 'Unknown')}")
@@ -113,8 +141,8 @@ def format_breaches_for_ai(account: str, breaches: list) -> str:
         parts.append(f"Breach date: {breach.get('BreachDate', 'N/A')}")
         parts.append(f"Accounts affected: {breach.get('PwnCount') or 0:,}")
         parts.append(f"Compromised data: {', '.join(breach.get('DataClasses', [])) or 'N/A'}")
-        if breach.get("IsVerified") is False:
-            parts.append("Note: this breach is unverified.")
+        for _, note in breach_flags(breach):
+            parts.append(f"Note: {note}")
         parts.append(f"Description: {html_to_text(breach.get('Description', ''))}")
     return "\n".join(parts)
 

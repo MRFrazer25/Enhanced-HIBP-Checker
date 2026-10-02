@@ -13,6 +13,7 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"
 # (connect, read) timeouts. Large models can take a while to load before the first token.
 CHAT_TIMEOUT = (10, 300)
 TAGS_TIMEOUT = 5
+CHAT_TEMPERATURE = 0.3
 
 class OllamaError(Exception):
     """Raised when Ollama can't be reached or returns an error."""
@@ -62,7 +63,14 @@ def stream_chat(base_url: str, model: str, messages: list, should_stop=lambda: F
     url = f"{normalize_base_url(base_url)}/api/chat"
     # Thinking is turned off: on typical laptops (CPU only) a reasoning phase can add minutes
     # before the first word appears, and it isn't needed for this kind of advice.
-    payload = {"model": model, "messages": messages, "stream": True, "think": False}
+    # A low temperature keeps advice consistent and makes the model follow its instructions more reliably.
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "think": False,
+        "options": {"temperature": CHAT_TEMPERATURE},
+    }
     try:
         with requests.post(url, json=payload, timeout=CHAT_TIMEOUT, stream=True) as response:
             if response.status_code != 200:
