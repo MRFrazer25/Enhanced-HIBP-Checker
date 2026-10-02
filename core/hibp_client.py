@@ -102,7 +102,8 @@ def check_pwned_password(password: str) -> int:
     if not password:
         raise HibpError("Password cannot be empty.")
 
-    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    # SHA-1 is what the Pwned Passwords API uses for lookups; it isn't used to protect anything here.
+    sha1 = hashlib.sha1(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
     prefix, suffix = sha1[:5], sha1[5:]
     response = _get(
         PWNED_PASSWORDS_URL.format(prefix=prefix),
