@@ -4,7 +4,7 @@ import pytest
 import requests
 
 from core import hibp_client
-from core.hibp_client import HibpError, check_hibp, check_pwned_password, format_breaches_for_ai, html_to_text
+from core.hibp_client import HibpError, check_hibp, check_pwned_password, format_breaches_for_ai, html_to_text, normalize_breach
 
 class FakeResponse:
     def __init__(self, status_code=200, json_data=None, text="", headers=None):
@@ -56,11 +56,51 @@ def test_check_hibp_requires_key_and_account():
 
 def test_network_errors_become_hibp_errors(fake_get):
     fake_get(exception=requests.exceptions.ConnectionError("boom"))
-    with pytest.raises(HibpError, match="connect"):
+    with pytest.raises(HibpError, match="connect") as excinfo:
+        check_hibp("x@example.com", "key")
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.ConnectionError)
+    assert "internet connection" in str(excinfo.value)
+
+def test_ssl_error_is_not_generic_connection_message(fake_get):
+    fake_get(exception=requests.exceptions.SSLError("bad cert"))
+    with pytest.raises(HibpError, match="certificate") as excinfo:
+        check_hibp("x@example.com", "key")
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.SSLError)
+    assert "internet connection" not in str(excinfo.value)
+
+def test_timeout_and_generic_errors_chain_cause(fake_get):
+    fake_get(exception=requests.exceptions.Timeout("slow"))
+    with pytest.raises(HibpError, match="timed out") as excinfo:
+        check_hibp("x@example.com", "key")
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.Timeout)
+
+    fake_get(exception=requests.exceptions.RequestException("other"))
+    with pytest.raises(HibpError) as excinfo:
+        check_hibp("x@example.com", "key")
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.RequestException)
+
+def test_bad_json_chains_value_error(fake_get):
+    fake_get(FakeResponse(200))
+    with pytest.raises(HibpError, match="decode") as excinfo:
+        check_hibp("x@example.com", "key")
+    assert isinstance(excinfo.value.__cause__, ValueError)
+
+def test_check_hibp_rejects_non_list_payload(fake_get):
+    fake_get(FakeResponse(200, {"Title": "nope"}))
+    with pytest.raises(HibpError, match="decode"):
         check_hibp("x@example.com", "key")
 
+def test_check_hibp_normalizes_malformed_records(fake_get):
+    fake_get(FakeResponse(200, [{
+        "Title": None, "PwnCount": "5", "DataClasses": None, "BreachDate": "2020-01-01",
+    }]))
+    [breach] = check_hibp("x@example.com", "key")
+    assert breach["Title"] == "Unknown"
+    assert breach["PwnCount"] == 5
+    assert breach["DataClasses"] == []
+
 def test_pwned_password_only_sends_hash_prefix(fake_get):
-    sha1 = hashlib.sha1(b"password123").hexdigest().upper()
+    sha1 = hashlib.sha1(b"password123", usedforsecurity=False).hexdigest().upper()
     calls = fake_get(FakeResponse(200, text=f"0000000000000000000000000000000000A:0\r\n{sha1[5:]}:42\r\n"))
     assert check_pwned_password("password123") == 42
     assert calls[0]["url"].endswith("/range/" + sha1[:5])
@@ -93,6 +133,30 @@ def test_unexpected_status_does_not_echo_server_body(fake_get):
 def test_format_breaches_handles_missing_fields():
     text = format_breaches_for_ai("x@example.com", [{"Title": "Mystery", "PwnCount": None}])
     assert "Accounts affected: 0" in text
+
+def test_format_breaches_handles_null_and_wrong_types():
+    text = format_breaches_for_ai("x@example.com", [{
+        "Title": None,
+        "Domain": None,
+        "BreachDate": None,
+        "PwnCount": "12",
+        "DataClasses": None,
+        "Description": None,
+    }])
+    assert "Breach: Unknown" in text
+    assert "Accounts affected: 12" in text
+    assert "Compromised data: N/A" in text
+
+def test_normalize_breach_coerces_fields():
+    breach = normalize_breach({
+        "Title": None,
+        "PwnCount": "not-a-number",
+        "DataClasses": ["Email", None, 3],
+    })
+    assert breach["Title"] == "Unknown"
+    assert breach["PwnCount"] == 0
+    assert breach["DataClasses"] == ["Email", "3"]
+    assert normalize_breach("not-a-dict")["Title"] == "Unknown"
 
 def test_format_breaches_explains_flags_and_date():
     import datetime

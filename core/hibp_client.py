@@ -71,9 +71,12 @@ def check_hibp(account: str, api_key: str) -> list:
 
     if response.status_code == 200:
         try:
-            breaches = response.json()
-        except ValueError:
+            payload = response.json()
+        except ValueError as e:
+            raise HibpError("Failed to decode HIBP API response.") from e
+        if not isinstance(payload, list):
             raise HibpError("Failed to decode HIBP API response.")
+        breaches = [normalize_breach(item) for item in payload]
         return sorted(breaches, key=lambda b: b.get("BreachDate") or "", reverse=True)
     if response.status_code == 404:
         return []
@@ -123,6 +126,42 @@ def html_to_text(text: str) -> str:
     """Strips tags from HIBP's HTML breach descriptions and decodes entities."""
     return html.unescape(re.sub(r"<[^>]+>", "", text or "")).strip()
 
+def _as_text(value, default=""):
+    if value is None:
+        return default
+    return value if isinstance(value, str) else str(value)
+
+def _as_int(value, default=0):
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+def _as_text_list(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    try:
+        return [_as_text(item) for item in value if item is not None]
+    except TypeError:
+        return []
+
+def normalize_breach(breach) -> dict:
+    """Coerces a HIBP breach record to the field types the UI and AI formatter expect."""
+    if not isinstance(breach, dict):
+        breach = {}
+    normalized = dict(breach)
+    normalized["Title"] = _as_text(breach.get("Title"), "Unknown").strip() or "Unknown"
+    normalized["Domain"] = _as_text(breach.get("Domain"))
+    normalized["BreachDate"] = _as_text(breach.get("BreachDate"))
+    normalized["PwnCount"] = _as_int(breach.get("PwnCount"))
+    normalized["DataClasses"] = _as_text_list(breach.get("DataClasses"))
+    normalized["Description"] = _as_text(breach.get("Description"))
+    return normalized
+
 def breach_flags(breach: dict) -> list:
     """Returns (label, explanation) pairs for the HIBP flags that apply to a breach."""
     return [(label, note) for field, value, label, note in BREACH_FLAGS if breach.get(field) is value]
@@ -136,24 +175,30 @@ def format_breaches_for_ai(account: str, breaches: list, today: datetime.date = 
         f"Number of breaches: {len(breaches)}",
     ]
     for breach in breaches:
+        breach = normalize_breach(breach)
         parts.append("")
-        parts.append(f"Breach: {breach.get('Title', 'Unknown')}")
-        parts.append(f"Domain: {breach.get('Domain') or 'N/A'}")
-        parts.append(f"Breach date: {breach.get('BreachDate', 'N/A')}")
-        parts.append(f"Accounts affected: {breach.get('PwnCount') or 0:,}")
-        parts.append(f"Compromised data: {', '.join(breach.get('DataClasses', [])) or 'N/A'}")
+        parts.append(f"Breach: {breach['Title']}")
+        parts.append(f"Domain: {breach['Domain'] or 'N/A'}")
+        parts.append(f"Breach date: {breach['BreachDate'] or 'N/A'}")
+        parts.append(f"Accounts affected: {breach['PwnCount']:,}")
+        parts.append(f"Compromised data: {', '.join(breach['DataClasses']) or 'N/A'}")
         for _, note in breach_flags(breach):
             parts.append(f"Note: {note}")
-        parts.append(f"Description: {html_to_text(breach.get('Description', ''))}")
+        parts.append(f"Description: {html_to_text(breach['Description'])}")
     return "\n".join(parts)
 
 def _get(url: str, headers: dict, params: dict = None) -> requests.Response:
     """Performs a GET request, converting network failures into HibpError."""
     try:
         return requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.Timeout:
-        raise HibpError("The request to HIBP timed out.")
-    except requests.exceptions.ConnectionError:
-        raise HibpError("Could not connect to HIBP. Check your internet connection.")
+    except requests.exceptions.Timeout as e:
+        raise HibpError("The request to HIBP timed out.") from e
+    except requests.exceptions.SSLError as e:
+        raise HibpError(
+            "Secure connection to HIBP failed (certificate problem). "
+            "Check for an intercepting proxy or outdated certificates."
+        ) from e
+    except requests.exceptions.ConnectionError as e:
+        raise HibpError("Could not connect to HIBP. Check your internet connection.") from e
     except requests.exceptions.RequestException as e:
-        raise HibpError(f"An unexpected network error occurred: {e}")
+        raise HibpError(f"An unexpected network error occurred: {e}") from e

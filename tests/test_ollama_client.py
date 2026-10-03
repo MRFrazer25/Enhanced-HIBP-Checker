@@ -1,9 +1,11 @@
 import json
+import threading
 
 import pytest
+import requests
 
 from core import ollama_client
-from core.ollama_client import OllamaError, normalize_base_url, stream_chat
+from core.ollama_client import CancellableRequest, OllamaError, list_models, normalize_base_url, stream_chat
 
 @pytest.mark.parametrize("value, expected", [
     ("", "http://localhost:11434"),
@@ -68,3 +70,80 @@ def test_stream_chat_reports_ollama_error(monkeypatch):
     )
     with pytest.raises(OllamaError, match="not found"):
         list(stream_chat("", "nope", []))
+
+def test_stream_chat_ssl_error_is_not_generic_connection_message(monkeypatch):
+    def boom(*a, **k):
+        raise requests.exceptions.SSLError("bad cert")
+    monkeypatch.setattr(ollama_client.requests, "post", boom)
+    with pytest.raises(OllamaError, match="certificate") as excinfo:
+        list(stream_chat("", "m", []))
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.SSLError)
+    assert "Is Ollama running" not in str(excinfo.value)
+
+def test_stream_chat_errors_chain_cause(monkeypatch):
+    monkeypatch.setattr(
+        ollama_client.requests, "post",
+        lambda *a, **k: (_ for _ in ()).throw(requests.exceptions.ConnectionError("boom")),
+    )
+    with pytest.raises(OllamaError, match="connect") as excinfo:
+        list(stream_chat("", "m", []))
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.ConnectionError)
+
+def test_list_models_ssl_error(monkeypatch):
+    monkeypatch.setattr(
+        ollama_client.requests, "get",
+        lambda *a, **k: (_ for _ in ()).throw(requests.exceptions.SSLError("bad cert")),
+    )
+    with pytest.raises(OllamaError, match="certificate") as excinfo:
+        list_models("https://ollama.example")
+    assert isinstance(excinfo.value.__cause__, requests.exceptions.SSLError)
+
+def test_cancellable_request_close_unblocks_before_first_token(monkeypatch):
+    started = threading.Event()
+    released = threading.Event()
+
+    class BlockingStream:
+        def __init__(self):
+            self.status_code = 200
+            self.closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def close(self):
+            self.closed = True
+            released.set()
+
+        def iter_lines(self):
+            started.set()
+            if not released.wait(2):
+                raise AssertionError("close() was not called")
+            raise requests.exceptions.ConnectionError("read aborted")
+
+    stream = BlockingStream()
+    cancel = CancellableRequest()
+
+    class FakeSession:
+        def mount(self, *a, **k):
+            pass
+
+        def post(self, *a, **k):
+            cancel.attach_response(stream)
+            return stream
+
+        def close(self):
+            stream.close()
+
+    monkeypatch.setattr(ollama_client.requests, "Session", FakeSession)
+
+    def closer():
+        started.wait(2)
+        cancel.close()
+
+    threading.Thread(target=closer, daemon=True).start()
+    assert list(stream_chat("", "m", [], cancel=cancel)) == []
+    assert cancel.aborted()
+    assert stream.closed

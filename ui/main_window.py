@@ -24,8 +24,8 @@ from PyQt6.QtWidgets import (
     QMainWindow, QMessageBox, QPushButton, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
 
-from core.hibp_client import HibpError, breach_flags, check_hibp, check_pwned_password, format_breaches_for_ai
-from core.ollama_client import DEFAULT_OLLAMA_URL, OllamaError, list_models, normalize_base_url, stream_chat
+from core.hibp_client import HibpError, breach_flags, check_hibp, check_pwned_password, format_breaches_for_ai, normalize_breach
+from core.ollama_client import DEFAULT_OLLAMA_URL, CancellableRequest, OllamaError, list_models, normalize_base_url, stream_chat
 from core.secure_storage import delete_api_key, get_api_key, set_api_key
 from .styles import DARK_MODE_STYLESHEET, STATUS_COLORS
 
@@ -150,6 +150,7 @@ class MainWindow(QMainWindow):
         self.chat_history = []
         self.chat_request_id = 0
         self.chat_stop_event = None
+        self.chat_request = None
         self.current_ai_message_id = None
         self.current_ai_text = ""
         self.pending_user_message = None
@@ -196,7 +197,10 @@ class MainWindow(QMainWindow):
             return False  # The window was destroyed while the thread was still running
 
     def _on_task_finished(self, callback, result):
-        callback(result)
+        try:
+            callback(result)
+        except Exception as e:
+            self._show_error("Error", f"An unexpected error occurred: {e}")
 
     def _show_error(self, title: str, text: str):
         """Shows an error dialog that always treats the message as plain text."""
@@ -275,6 +279,11 @@ class MainWindow(QMainWindow):
             self.hibp_results_area.setPlainText(f"Error: {message}")
             self._show_error("HIBP Error", message)
             return
+        if not isinstance(result, list):
+            message = "An unexpected error occurred: invalid HIBP result"
+            self.hibp_results_area.setPlainText(f"Error: {message}")
+            self._show_error("HIBP Error", message)
+            return
 
         safe_account = html.escape(account)
         if not result:
@@ -290,11 +299,12 @@ class MainWindow(QMainWindow):
             f"Found {len(result)} breach{'es' if len(result) != 1 else ''} for {safe_account}</h3>"
         ]
         for breach in result:
-            title = html.escape(breach.get("Title", "Unknown"))
-            domain = html.escape(breach.get("Domain") or "N/A")
-            breach_date = html.escape(breach.get("BreachDate", "N/A"))
-            pwn_count = breach.get("PwnCount") or 0
-            data_classes = html.escape(", ".join(breach.get("DataClasses", [])) or "N/A")
+            breach = normalize_breach(breach)
+            title = html.escape(breach["Title"])
+            domain = html.escape(breach["Domain"] or "N/A")
+            breach_date = html.escape(breach["BreachDate"] or "N/A")
+            pwn_count = breach["PwnCount"]
+            data_classes = html.escape(", ".join(breach["DataClasses"]) or "N/A")
             flags = [label for label, _ in breach_flags(breach)]
             flag_text = f" <i>({html.escape(', '.join(flags))})</i>" if flags else ""
             parts.append(
@@ -314,8 +324,8 @@ class MainWindow(QMainWindow):
         """Builds a size-limited breach summary for the AI (small models have small context windows)."""
         trimmed = []
         for breach in breaches[:MAX_BREACHES_FOR_AI]:
-            breach = dict(breach)
-            description = breach.get("Description", "")
+            breach = normalize_breach(breach)
+            description = breach["Description"]
             if len(description) > MAX_DESCRIPTION_CHARS:
                 breach["Description"] = description[:MAX_DESCRIPTION_CHARS] + "..."
             trimmed.append(breach)
@@ -536,19 +546,27 @@ class MainWindow(QMainWindow):
         base_url = self.settings.value(SETTINGS_OLLAMA_ENDPOINT, DEFAULT_OLLAMA_URL)
         model = self._saved_model()
         stop_event = threading.Event()
+        cancel = CancellableRequest()
         self.chat_stop_event = stop_event
+        self.chat_request = cancel
         self.ai_send_button.setText("Stop")
 
         def worker():
             emit = lambda kind, text="": self._emit_safely("_chat_event", request_id, kind, text)
             try:
-                for chunk in stream_chat(base_url, model, messages, should_stop=stop_event.is_set):
+                for chunk in stream_chat(
+                    base_url, model, messages, should_stop=stop_event.is_set, cancel=cancel,
+                ):
                     if not emit("chunk", chunk):
                         return
                 emit("done")
             except OllamaError as e:
+                if stop_event.is_set() or cancel.aborted():
+                    return
                 emit("error", str(e))
             except Exception as e:
+                if stop_event.is_set() or cancel.aborted():
+                    return
                 emit("error", f"Unexpected error: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
@@ -588,10 +606,13 @@ class MainWindow(QMainWindow):
         """Stops the current AI response, keeping whatever text has arrived so far."""
         if self.chat_stop_event:
             self.chat_stop_event.set()
+            if self.chat_request:
+                self.chat_request.close()
             self._finish_ai_response(note="Stopped.")
 
     def _set_chat_idle(self):
         self.chat_stop_event = None
+        self.chat_request = None
         self.ai_send_button.setText("Send")
         self.ai_input.setFocus()
 
@@ -599,6 +620,8 @@ class MainWindow(QMainWindow):
         """Stops any response in progress and starts a fresh conversation."""
         if self.chat_stop_event:
             self.chat_stop_event.set()
+            if self.chat_request:
+                self.chat_request.close()
             self.render_timer.stop()
             self.pending_user_message = None
             self._set_chat_idle()
@@ -787,4 +810,6 @@ class MainWindow(QMainWindow):
         """Stops any AI response in progress before the window closes."""
         if self.chat_stop_event:
             self.chat_stop_event.set()
+        if self.chat_request:
+            self.chat_request.close()
         super().closeEvent(event)

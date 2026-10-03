@@ -80,6 +80,7 @@
 
 4.  **AI Advisor tab:**
     *   Type a question and press Enter or click **Send**. While a response is streaming, the button becomes **Stop**.
+    *   **Stop** and **New Chat** cancel the in-flight Ollama request immediately, including while the model is still loading and no text has appeared yet.
     *   Click **New Chat** to clear the conversation and start fresh.
 
 ## Choosing a Model
@@ -109,9 +110,10 @@ With a dedicated GPU, responses are much faster and larger models (such as `gemm
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest
+node --test tests/test_chat_logic.js
 ```
 
-The tests mock all network calls, so they don't need an API key, internet access, or Ollama.
+The Python tests mock all network calls, so they don't need an API key, internet access, or Ollama. The Node test loads the chat markdown renderer with hostile fixtures (`<script>`, attribute breakouts, NUL placeholders, a huge list start, and an unclosed code fence) and checks that only the allowed tags are produced.
 
 ## Project Structure
 
@@ -134,6 +136,9 @@ tests/                   Unit tests
     *   Make sure you have pulled at least one model (for example `ollama pull gemma4:e4b`).
     *   If you see "model ... not found" or Settings says your saved model isn't installed, click **Refresh Models** and choose a model you have installed.
     *   Responses are slow on computers without a dedicated GPU. Smaller models answer faster but give less accurate advice (see [Choosing a Model](#choosing-a-model)).
+
+*   **"Secure connection to HIBP failed (certificate problem)"** or the same message for Ollama:
+    *   Something is intercepting HTTPS (a corporate proxy, antivirus HTTPS scanning, or an outdated certificate store). The app is refusing the connection on purpose; it is not a generic network failure.
 
 *   **"Unauthorized: the HIBP API key is invalid":** Check that the key was pasted correctly and that your HIBP subscription is active.
 
