@@ -2,6 +2,8 @@
 
 **Enhanced HIBP Checker** is a Python desktop application that helps you improve your online security. It checks email addresses or usernames against the [Have I Been Pwned](https://haveibeenpwned.com/) (HIBP) breach database, checks whether a password has appeared in known breaches, and gives AI-powered security advice using a model running locally through [Ollama](https://ollama.com/).
 
+![Breach Check tab showing three breaches found for an HIBP test account, with dates, affected accounts and exposed data types](docs/screenshot.png)
+
 ## Features
 
 *   **Breach Check:** See which known data breaches include your email address or username, when they happened, and what kinds of data were exposed.
