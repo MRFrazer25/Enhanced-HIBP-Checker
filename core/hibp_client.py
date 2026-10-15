@@ -87,8 +87,10 @@ def check_hibp(account: str, api_key: str) -> list:
     if response.status_code == 403:
         raise HibpError("Forbidden: HIBP rejected the request (check the User-Agent).")
     if response.status_code == 429:
-        retry_after = response.headers.get("Retry-After", "a few")
-        raise HibpError(f"Rate limited. Please wait {retry_after} seconds before trying again.")
+        # Retry-After may be a number of seconds or an HTTP date; only quote it when it's seconds.
+        retry_after = (response.headers.get("Retry-After") or "").strip()
+        wait = f"{retry_after} seconds" if retry_after.isdigit() else "a little while"
+        raise HibpError(f"Rate limited. Please wait {wait} before trying again.")
     if response.status_code == 503:
         raise HibpError("Service Unavailable. HIBP might be down or undergoing maintenance.")
     raise HibpError(f"HIBP API Error: unexpected response (HTTP {response.status_code}).")
@@ -166,8 +168,13 @@ def breach_flags(breach: dict) -> list:
     """Returns (label, explanation) pairs for the HIBP flags that apply to a breach."""
     return [(label, note) for field, value, label, note in BREACH_FLAGS if breach.get(field) is value]
 
-def format_breaches_for_ai(account: str, breaches: list, today: datetime.date = None) -> str:
-    """Builds a plain text summary of breaches to give the AI advisor as context."""
+def format_breaches_for_ai(account: str, breaches: list, today: datetime.date = None,
+                           max_description_chars: int = None) -> str:
+    """Builds a plain text summary of breaches to give the AI advisor as context.
+
+    Descriptions are converted from HTML to text before being shortened, so a cut
+    can never land inside an HTML tag.
+    """
     today = today or datetime.date.today()
     parts = [
         f"HIBP check results for account: {account}",
@@ -184,7 +191,10 @@ def format_breaches_for_ai(account: str, breaches: list, today: datetime.date = 
         parts.append(f"Compromised data: {', '.join(breach['DataClasses']) or 'N/A'}")
         for _, note in breach_flags(breach):
             parts.append(f"Note: {note}")
-        parts.append(f"Description: {html_to_text(breach['Description'])}")
+        description = html_to_text(breach["Description"])
+        if max_description_chars and len(description) > max_description_chars:
+            description = description[:max_description_chars].rstrip() + "..."
+        parts.append(f"Description: {description}")
     return "\n".join(parts)
 
 def _get(url: str, headers: dict, params: dict = None) -> requests.Response:

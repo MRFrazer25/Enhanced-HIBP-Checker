@@ -171,3 +171,25 @@ def test_format_breaches_explains_flags_and_date():
 def test_breach_flags_labels():
     assert [label for label, _ in hibp_client.breach_flags({"IsStealerLog": True, "IsVerified": True})] == ["stealer log"]
     assert hibp_client.breach_flags({"IsVerified": True}) == []
+
+
+def test_rate_limit_with_http_date_retry_after(fake_get):
+    fake_get(FakeResponse(429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}))
+    with pytest.raises(HibpError) as excinfo:
+        check_hibp("x@example.com", "key")
+    assert "GMT" not in str(excinfo.value)
+    assert "a little while" in str(excinfo.value)
+
+def test_rate_limit_with_seconds_retry_after(fake_get):
+    fake_get(FakeResponse(429, headers={"Retry-After": "7"}))
+    with pytest.raises(HibpError, match="7 seconds"):
+        check_hibp("x@example.com", "key")
+
+def test_format_breaches_shortens_text_not_html():
+    html_desc = '<p>' + 'a' * 395 + ' <a href="http://example.com/x">link text</a></p>'
+    text = format_breaches_for_ai("x@example.com", [{"Title": "T", "Description": html_desc}],
+                                  max_description_chars=400)
+    description = text.split("Description: ", 1)[1]
+    assert "<" not in description and "href" not in description
+    assert description.endswith("...")
+    assert len(description) <= 403

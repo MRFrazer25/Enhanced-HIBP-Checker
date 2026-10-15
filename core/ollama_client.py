@@ -17,6 +17,9 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"
 CHAT_TIMEOUT = (10, 300)
 TAGS_TIMEOUT = 5
 CHAT_TEMPERATURE = 0.3
+# Ollama's default context window (often 4096 tokens) is too small for the system prompt plus a long
+# breach list and chat history; when it overflows, Ollama silently drops the start of the conversation.
+CHAT_CONTEXT_TOKENS = 8192
 
 class OllamaError(Exception):
     """Raised when Ollama can't be reached or returns an error."""
@@ -180,7 +183,7 @@ def stream_chat(base_url: str, model: str, messages: list, should_stop=lambda: F
         "messages": messages,
         "stream": True,
         "think": False,
-        "options": {"temperature": CHAT_TEMPERATURE},
+        "options": {"temperature": CHAT_TEMPERATURE, "num_ctx": CHAT_CONTEXT_TOKENS},
     }
     session = None
     try:
@@ -220,6 +223,10 @@ def stream_chat(base_url: str, model: str, messages: list, should_stop=lambda: F
                     yield content
                 if data.get("done"):
                     return
+            # The stream ended without Ollama's final "done" message, so the reply is incomplete.
+            if _cancelled(should_stop, cancel):
+                return
+            raise OllamaError("Ollama stopped responding before the reply was finished. Please try again.")
     except requests.exceptions.SSLError as e:
         if _cancelled(should_stop, cancel):
             return

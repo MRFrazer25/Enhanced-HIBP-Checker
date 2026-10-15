@@ -148,6 +148,7 @@ class MainWindow(QMainWindow):
 
         # Chat state
         self.chat_view_ready = False
+        self.chat_view_failed = False
         self.pending_js_calls = []
         self.chat_history = []
         self.chat_request_id = 0
@@ -209,6 +210,15 @@ class MainWindow(QMainWindow):
         box = QMessageBox(QMessageBox.Icon.Critical, title, text, QMessageBox.StandardButton.Ok, self)
         box.setTextFormat(Qt.TextFormat.PlainText)
         box.exec()
+
+    @staticmethod
+    def _make_show_toggle(text: str, field: QLineEdit) -> QCheckBox:
+        """A checkbox that reveals or hides the text of a password-style field."""
+        toggle = QCheckBox(text)
+        toggle.toggled.connect(
+            lambda checked: field.setEchoMode(QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password)
+        )
+        return toggle
 
     def _set_status(self, label: QLabel, text: str, kind: str = "info"):
         """Shows a status message in a label, colored by kind (info, success, warning, error).
@@ -324,14 +334,9 @@ class MainWindow(QMainWindow):
 
     def _build_ai_breach_context(self, account, breaches):
         """Builds a size-limited breach summary for the AI (small models have small context windows)."""
-        trimmed = []
-        for breach in breaches[:MAX_BREACHES_FOR_AI]:
-            breach = normalize_breach(breach)
-            description = breach["Description"]
-            if len(description) > MAX_DESCRIPTION_CHARS:
-                breach["Description"] = description[:MAX_DESCRIPTION_CHARS] + "..."
-            trimmed.append(breach)
-        context = format_breaches_for_ai(account, trimmed)
+        context = format_breaches_for_ai(
+            account, breaches[:MAX_BREACHES_FOR_AI], max_description_chars=MAX_DESCRIPTION_CHARS,
+        )
         if len(breaches) > MAX_BREACHES_FOR_AI:
             context += f"\n\n({len(breaches) - MAX_BREACHES_FOR_AI} older breaches omitted for brevity.)"
         return context
@@ -383,13 +388,7 @@ class MainWindow(QMainWindow):
         input_row.addWidget(self.password_check_button)
         layout.addLayout(input_row)
 
-        show_password = QCheckBox("Show password")
-        show_password.toggled.connect(
-            lambda checked: self.password_input.setEchoMode(
-                QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
-            )
-        )
-        layout.addWidget(show_password)
+        layout.addWidget(self._make_show_toggle("Show password", self.password_input))
 
         self.password_result_label = QLabel("")
         self.password_result_label.setWordWrap(True)
@@ -467,9 +466,11 @@ class MainWindow(QMainWindow):
     def _on_chat_view_load_finished(self, success: bool):
         """Handles the event when the AI chat QWebEngineView has finished loading its content."""
         self.chat_view_ready = success
+        self.chat_view_failed = not success
         self.ai_send_button.setEnabled(success)
         self.ai_input.setEnabled(success)
         if not success:
+            self.pending_js_calls = []
             QMessageBox.critical(self, "Chat Error", "Failed to load the chat interface. AI Advisor may not work correctly.")
             return
         for js_code in self.pending_js_calls:
@@ -479,12 +480,12 @@ class MainWindow(QMainWindow):
     def _call_chat_js(self, function_name: str, *args):
         """Calls a function in chat_logic.js. Arguments are JSON-encoded, so they're always safe literals.
 
-        If the view is not ready yet, the call is queued.
+        If the view is still loading, the call is queued; if the page failed to load, it's dropped.
         """
         js_code = f"{function_name}({', '.join(json.dumps(arg) for arg in args)});"
         if self.chat_view_ready:
             self.ai_chat_view.page().runJavaScript(js_code)
-        else:
+        elif not self.chat_view_failed:
             self.pending_js_calls.append(js_code)
 
     def _chat_busy(self):
@@ -653,18 +654,10 @@ class MainWindow(QMainWindow):
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setPlaceholderText("HIBP API key")
-        stored_api_key = get_api_key()
-        if stored_api_key:
-            self.api_key_input.setText(stored_api_key)
+        # Read in the background: some keyring backends block while waiting to be unlocked.
+        self._run_in_background(get_api_key, self._on_api_key_loaded)
         key_row.addWidget(self.api_key_input)
-
-        show_key = QCheckBox("Show")
-        show_key.toggled.connect(
-            lambda checked: self.api_key_input.setEchoMode(
-                QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
-            )
-        )
-        key_row.addWidget(show_key)
+        key_row.addWidget(self._make_show_toggle("Show", self.api_key_input))
         hibp_layout.addLayout(key_row)
 
         key_buttons = QHBoxLayout()
@@ -718,6 +711,11 @@ class MainWindow(QMainWindow):
 
         return self.settings_tab
 
+    def _on_api_key_loaded(self, api_key):
+        # Don't overwrite anything the user started typing while the keyring was being read.
+        if isinstance(api_key, str) and api_key and not self.api_key_input.text():
+            self.api_key_input.setText(api_key)
+
     def _save_hibp_api_key(self):
         """Saves the HIBP API key entered by the user to secure storage."""
         api_key = self.api_key_input.text().strip()
@@ -741,9 +739,13 @@ class MainWindow(QMainWindow):
             self._set_status(self.api_key_status_label, f"Error removing HIBP API Key: {e}", "error")
 
     def _save_ollama_settings(self):
-        """Saves the Ollama server URL and selected model to application settings."""
+        """Saves the Ollama server URL and the model shown in the dropdown (the Save button)."""
+        self._store_ollama_settings(self.ollama_model_combo.currentText())
+
+    def _store_ollama_settings(self, model: str):
+        """Saves the server URL together with the given model."""
         base_url = normalize_base_url(self.ollama_endpoint_input.text())
-        model = self.ollama_model_combo.currentText().strip()
+        model = model.strip()
         if not model:
             self._set_status(self.ollama_settings_status_label, "Please choose a model.", "error")
             return
@@ -754,11 +756,9 @@ class MainWindow(QMainWindow):
         self._set_status(self.ollama_settings_status_label, f"Saved. The AI Advisor will use {model}.", "success")
 
     def _on_model_chosen(self, model: str):
-        """Saves the model as soon as it's picked from the dropdown."""
-        model = model.strip()
-        if model:
-            self.settings.setValue(SETTINGS_OLLAMA_MODEL, model)
-            self._set_status(self.ollama_settings_status_label, f"Saved. The AI Advisor will use {model}.", "success")
+        """Picking a model saves it together with the server URL it was listed from."""
+        if model.strip():
+            self._store_ollama_settings(model)
 
     def _populate_ollama_models(self):
         """Fetches the list of locally installed Ollama models in the background."""

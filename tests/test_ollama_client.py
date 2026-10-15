@@ -57,6 +57,7 @@ def test_stream_chat_yields_content(monkeypatch):
     assert captured["payload"]["messages"] == messages
     assert captured["payload"]["think"] is False
     assert captured["payload"]["options"]["temperature"] == ollama_client.CHAT_TEMPERATURE
+    assert captured["payload"]["options"]["num_ctx"] == ollama_client.CHAT_CONTEXT_TOKENS
 
 def test_stream_chat_stops_early(monkeypatch):
     monkeypatch.setattr(ollama_client.requests, "post", lambda *a, **k: FakeStream([chunk("a"), chunk("b")]))
@@ -147,3 +148,12 @@ def test_cancellable_request_close_unblocks_before_first_token(monkeypatch):
     assert list(stream_chat("", "m", [], cancel=cancel)) == []
     assert cancel.aborted()
     assert stream.closed
+
+
+def test_stream_that_ends_without_done_is_an_error(monkeypatch):
+    monkeypatch.setattr(ollama_client.requests, "post", lambda *a, **k: FakeStream([chunk("Half an ans")]))
+    received = []
+    with pytest.raises(OllamaError, match="before the reply was finished"):
+        for part in stream_chat("", "m", []):
+            received.append(part)
+    assert received == ["Half an ans"]

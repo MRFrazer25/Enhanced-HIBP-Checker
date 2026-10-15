@@ -94,6 +94,51 @@ def test_stop_and_new_chat_abort_in_flight_request(window):
     assert window.chat_history == []
 
 
+def test_picking_a_model_also_saves_the_server_url(window):
+    window.ollama_endpoint_input.setText("http://10.0.0.5:11434/api/generate")
+    window.ollama_model_combo.addItems(["aaa:latest", "gemma4:e4b"])
+    window.ollama_model_combo.setCurrentIndex(-1)
+    window.ollama_model_combo.textActivated.emit("gemma4:e4b")
+    assert window.settings.value("ollama/model") == "gemma4:e4b"
+    assert window.settings.value("ollama/endpoint") == "http://10.0.0.5:11434"
+
+
+def test_chat_calls_are_dropped_after_the_page_fails_to_load(window, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    window.chat_view_ready = False
+    window._on_chat_view_load_finished(False)
+    window._call_chat_js("clearChat")
+    window._call_chat_js("addUserMessage", "hi")
+    assert window.pending_js_calls == []
+
+
+def test_breach_context_strips_html_before_shortening(window):
+    long_html = '<p>' + 'x' * 420 + ' <a href="http://www.example.com/very/long/path">read more</a></p>'
+    context = window._build_ai_breach_context("user@example.com", [{"Title": "Adobe", "Description": long_html}])
+    assert "<a" not in context and "href" not in context
+    assert "..." in context
+
+
+def test_saved_api_key_is_loaded_into_settings(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr("ui.main_window.get_api_key", lambda: "stored-key")
+    monkeypatch.setattr("ui.main_window.list_models", lambda url: [])
+    monkeypatch.setattr(
+        "ui.main_window.QSettings",
+        lambda *a, **k: QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat),
+    )
+    from ui.main_window import MainWindow
+
+    def run_inline(self, func, callback, *args):
+        callback(func(*args))
+
+    monkeypatch.setattr(MainWindow, "_run_in_background", run_inline)
+    win = MainWindow()
+    try:
+        assert win.api_key_input.text() == "stored-key"
+    finally:
+        win.close()
+
+
 def test_desktop_app_exercise(window, capsys):
     """Headless walk through the window the way a user would hit the fixed paths."""
     print("constructed MainWindow offscreen")

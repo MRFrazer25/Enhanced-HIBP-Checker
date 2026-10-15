@@ -41,6 +41,10 @@ jobs:
       - name: Tests
         run: python -m pytest -q
 
+      # Node.js is preinstalled on GitHub's Windows runners
+      - name: Chat renderer tests (Node)
+        run: node --test tests/test_chat_logic.js
+
       # Audits the exact versions installed above, so nothing is downloaded twice
       - name: Known-vulnerable dependencies (pip-audit)
         run: pip-audit
