@@ -1,4 +1,5 @@
-PyQt6
-PyQt6-WebEngine
-keyring
-requests
+# Exact versions. Dependabot proposes updates weekly, once a release is 7 days old (.github/dependabot.yml).
+PyQt6==6.11.0
+PyQt6-WebEngine==6.11.0
+keyring==25.7.0
+requests==2.34.2
