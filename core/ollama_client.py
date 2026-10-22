@@ -12,6 +12,8 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from requests.adapters import HTTPAdapter
 
+# Ollama serves plain http on localhost by default. A remote server can be reached over https by
+# entering an https:// URL; requests below use whichever scheme the user entered.
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 # (connect, read) timeouts. Large models can take a while to load before the first token.
 CHAT_TIMEOUT = (10, 300)
