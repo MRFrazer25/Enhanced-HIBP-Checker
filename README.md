@@ -1,5 +1,8 @@
 # Enhanced HIBP Checker
 
+[![Tests](https://github.com/MRFrazer25/Enhanced-HIBP-Checker/actions/workflows/tests.yml/badge.svg)](https://github.com/MRFrazer25/Enhanced-HIBP-Checker/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/MRFrazer25/Enhanced-HIBP-Checker/blob/main/LICENSE)
+
 **Enhanced HIBP Checker** is a Python desktop application that helps you improve your online security. It checks email addresses or usernames against the [Have I Been Pwned](https://haveibeenpwned.com/) (HIBP) breach database, checks whether a password has appeared in known breaches, and gives AI-powered security advice using a model running locally through [Ollama](https://ollama.com/).
 
 ![Breach Check tab showing three breaches found for an HIBP test account, with dates, affected accounts and exposed data types](docs/screenshot.png)
