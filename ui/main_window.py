@@ -25,7 +25,15 @@ from PyQt6.QtWidgets import (
 )
 
 from core.hibp_client import HibpError, breach_flags, check_hibp, check_pwned_password, format_breaches_for_ai, normalize_breach
-from core.ollama_client import DEFAULT_OLLAMA_URL, CancellableRequest, OllamaError, list_models, normalize_base_url, stream_chat
+from core.ollama_client import (
+    DEFAULT_OLLAMA_URL,
+    CancellableRequest,
+    OllamaError,
+    is_unencrypted_remote,
+    list_models,
+    normalize_base_url,
+    stream_chat,
+)
 from core.secure_storage import delete_api_key, get_api_key, set_api_key
 from .styles import DARK_MODE_STYLESHEET, STATUS_COLORS
 
@@ -686,6 +694,12 @@ class MainWindow(QMainWindow):
         )
         ollama_layout.addRow("Server URL:", self.ollama_endpoint_input)
 
+        self.ollama_insecure_label = QLabel("")
+        self.ollama_insecure_label.setWordWrap(True)
+        ollama_layout.addRow("", self.ollama_insecure_label)
+        self.ollama_endpoint_input.textChanged.connect(self._update_ollama_insecure_warning)
+        self._update_ollama_insecure_warning(self.ollama_endpoint_input.text())
+
         model_row = QHBoxLayout()
         self.ollama_model_combo = QComboBox()
         self.ollama_model_combo.setEditable(True)  # Allows typing a model name if listing fails
@@ -737,6 +751,20 @@ class MainWindow(QMainWindow):
             self._set_status(self.api_key_status_label, "HIBP API Key removed.", "success")
         except Exception as e:
             self._set_status(self.api_key_status_label, f"Error removing HIBP API Key: {e}", "error")
+
+    def _update_ollama_insecure_warning(self, text: str):
+        """Warns when the server URL sends prompts and chats to another machine over plain http."""
+        if is_unencrypted_remote(text):
+            self._set_status(
+                self.ollama_insecure_label,
+                "Warning: this connection isn't encrypted. Your prompts and chats (including breach details) "
+                "can be read by anyone on the network. Use https:// unless the server is on a network you trust.",
+                "warning",
+            )
+            self.ollama_insecure_label.show()
+        else:
+            self.ollama_insecure_label.clear()
+            self.ollama_insecure_label.hide()
 
     def _save_ollama_settings(self):
         """Saves the Ollama server URL and the model shown in the dropdown (the Save button)."""

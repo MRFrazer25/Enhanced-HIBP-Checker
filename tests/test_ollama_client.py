@@ -5,7 +5,14 @@ import pytest
 import requests
 
 from core import ollama_client
-from core.ollama_client import CancellableRequest, OllamaError, list_models, normalize_base_url, stream_chat
+from core.ollama_client import (
+    CancellableRequest,
+    OllamaError,
+    is_unencrypted_remote,
+    list_models,
+    normalize_base_url,
+    stream_chat,
+)
 
 @pytest.mark.parametrize("value, expected", [
     ("", "http://localhost:11434"),
@@ -19,6 +26,40 @@ from core.ollama_client import CancellableRequest, OllamaError, list_models, nor
 ])
 def test_normalize_base_url(value, expected):
     assert normalize_base_url(value) == expected
+
+# Addresses typed without a scheme get http:// only on this machine; any other host gets https://
+@pytest.mark.parametrize("value, expected", [
+    ("localhost", "http://localhost"),
+    ("LOCALHOST:11434", "http://LOCALHOST:11434"),
+    ("127.0.0.1:11434", "http://127.0.0.1:11434"),
+    ("127.1.2.3:11434", "http://127.1.2.3:11434"),
+    ("::1", "http://[::1]"),
+    ("[::1]:11434", "http://[::1]:11434"),
+    ("host.docker.internal:11434", "http://host.docker.internal:11434"),
+    ("ollama.example.com:11434", "https://ollama.example.com:11434"),
+    ("10.0.0.5:11434/api/chat", "https://10.0.0.5:11434"),
+    ("localhost.example.com", "https://localhost.example.com"),
+    ("128.0.0.1:11434", "https://128.0.0.1:11434"),
+    ("[2001:db8::1]:11434", "https://[2001:db8::1]:11434"),
+    # An explicit scheme is always kept, so a LAN server over plain http still works
+    ("http://192.168.1.20:11434", "http://192.168.1.20:11434"),
+    ("https://localhost:11434", "https://localhost:11434"),
+])
+def test_default_scheme(value, expected):
+    assert normalize_base_url(value) == expected
+
+@pytest.mark.parametrize("value, expected", [
+    ("", False),
+    ("http://localhost:11434", False),
+    ("http://127.0.0.1:11434", False),
+    ("http://[::1]:11434", False),
+    ("192.168.1.20:11434", False),  # becomes https://
+    ("https://192.168.1.20:11434", False),
+    ("http://192.168.1.20:11434", True),
+    ("http://ollama.example.com", True),
+])
+def test_is_unencrypted_remote(value, expected):
+    assert is_unencrypted_remote(value) is expected
 
 class FakeStream:
     def __init__(self, lines, status_code=200, json_data=None):

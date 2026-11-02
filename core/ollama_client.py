@@ -4,6 +4,7 @@ Minimal client for a local Ollama server.
 Uses the /api/chat endpoint so the AI advisor keeps conversation history,
 and /api/tags to list the models that have been pulled locally.
 """
+import ipaddress
 import json
 import socket
 import threading
@@ -12,8 +13,9 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from requests.adapters import HTTPAdapter
 
-# Ollama serves plain http on localhost by default. A remote server can be reached over https by
-# entering an https:// URL; requests below use whichever scheme the user entered.
+# Ollama serves plain http on localhost by default. An address typed without a scheme gets http:// only
+# when it points at this machine; any other host gets https:// so prompts and chats aren't sent over the
+# network unencrypted. An explicit http:// URL is kept (e.g. a server on the LAN), and the UI warns about it.
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 # (connect, read) timeouts. Large models can take a while to load before the first token.
 CHAT_TIMEOUT = (10, 300)
@@ -129,17 +131,47 @@ class _AbortableAdapter(HTTPAdapter):
         self._tracker.watch_connection(conn)
         return conn
 
+LOCAL_HOSTNAMES = {"localhost", "host.docker.internal"}
+
+def _hostname(url: str) -> str:
+    """The host part of a URL, with or without a scheme. Empty if it can't be parsed."""
+    try:
+        return urlsplit(url if "://" in url else "//" + url).hostname or ""
+    except ValueError:
+        return ""
+
+def is_local_host(host: str) -> bool:
+    """True for addresses on this machine (localhost, 127.0.0.0/8, ::1, Docker's host alias)."""
+    host = (host or "").strip("[]").lower()
+    if host in LOCAL_HOSTNAMES:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+def is_unencrypted_remote(url: str) -> bool:
+    """True when the URL sends traffic to another machine over plain http."""
+    url = normalize_base_url(url)
+    return urlsplit(url).scheme == "http" and not is_local_host(_hostname(url))
+
 def normalize_base_url(url: str) -> str:
     """Turns whatever the user entered into the Ollama server's base URL.
 
     Older versions of this app stored the full /api/generate endpoint, so any
-    trailing /api/... path is stripped.
+    trailing /api/... path is stripped. Without a scheme, local addresses get
+    http:// and everything else gets https://.
     """
     url = (url or "").strip()
     if not url:
         return DEFAULT_OLLAMA_URL
     if "://" not in url:
-        url = "http://" + url
+        try:
+            # A bare IPv6 address such as ::1 needs brackets before a port or scheme can follow it
+            url = f"[{ipaddress.IPv6Address(url)}]"
+        except ValueError:
+            pass
+        url = ("http://" if is_local_host(_hostname(url)) else "https://") + url
     parts = urlsplit(url)
     path = parts.path
     api_index = path.find("/api/")

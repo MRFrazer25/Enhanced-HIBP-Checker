@@ -103,6 +103,15 @@ def test_picking_a_model_also_saves_the_server_url(window):
     assert window.settings.value("ollama/endpoint") == "http://10.0.0.5:11434"
 
 
+def test_plain_http_to_a_remote_server_shows_a_warning(window):
+    window.ollama_endpoint_input.setText("http://localhost:11434")
+    assert window.ollama_insecure_label.isHidden()
+    window.ollama_endpoint_input.setText("http://192.168.1.20:11434")
+    assert not window.ollama_insecure_label.isHidden()
+    assert "isn't encrypted" in window.ollama_insecure_label.text()
+    window.ollama_endpoint_input.setText("https://192.168.1.20:11434")
+    assert window.ollama_insecure_label.isHidden()
+
 def test_chat_calls_are_dropped_after_the_page_fails_to_load(window, monkeypatch):
     monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
     window.chat_view_ready = False
